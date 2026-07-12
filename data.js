@@ -8,6 +8,7 @@
    記述例：
    window.CREATE_HUB_DATA = [
  [
+[
   {
     "id": "hub-sample-03",
     "title": "IMAGE TO PDF TOOL",
@@ -48,6 +49,7 @@
     "accentColor": "orange",
     "order": 5
   }
+]
 ]
    ========================================================== */
 window.CREATE_HUB_DATA = null;
