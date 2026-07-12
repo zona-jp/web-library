@@ -1,0 +1,28 @@
+/* ==========================================================
+   CREATE HUB ─ 静的公開用データファイル
+   GitHub Pages などで公開する場合は、この配列に成果物を記述してください。
+   null のままの場合、index.html 内蔵のサンプルデータが表示されます。
+   （管理者モードでの編集内容は閲覧者ごとの localStorage に保存されるため、
+     全員に公開するデータはこのファイルで管理します）
+
+   記述例：
+   window.CREATE_HUB_DATA = [
+     {
+       id: 'work-001',
+       title: 'AI WORKFLOW GUIDE',
+       description: 'AIを業務に組み込むための実践ガイド。',
+       category: 'OTHER',         // SLIDES / WEB / TOOLS / OTHER
+       type: 'PDF',               // PDF / SLIDES / IMAGE / WEB SITE / WEB APP / HTML TOOL / VIDEO / AI PROJECT / OTHER
+       tags: ['AI', 'GUIDE'],
+       thumbnail: 'images/ai-guide.png',        // 相対パスまたは https://
+       url: 'documents/ai-workflow-guide.pdf',  // 相対パスまたは https://
+       created: '2026-05-02',
+       updated: '2026-06-18',
+       published: true,
+       featured: true,
+       accentColor: 'green',      // green / yellow / cyan / purple / orange
+       order: 1
+     }
+   ];
+   ========================================================== */
+window.CREATE_HUB_DATA = null;
