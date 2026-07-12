@@ -7,22 +7,47 @@
 
    記述例：
    window.CREATE_HUB_DATA = [
-     {
-       id: 'work-001',
-       title: 'AI WORKFLOW GUIDE',
-       description: 'AIを業務に組み込むための実践ガイド。',
-       category: 'OTHER',         // SLIDES / WEB / TOOLS / OTHER
-       type: 'PDF',               // PDF / SLIDES / IMAGE / WEB SITE / WEB APP / HTML TOOL / VIDEO / AI PROJECT / OTHER
-       tags: ['AI', 'GUIDE'],
-       thumbnail: 'images/ai-guide.png',        // 相対パスまたは https://
-       url: 'documents/ai-workflow-guide.pdf',  // 相対パスまたは https://
-       created: '2026-05-02',
-       updated: '2026-06-18',
-       published: true,
-       featured: true,
-       accentColor: 'green',      // green / yellow / cyan / purple / orange
-       order: 1
-     }
-   ];
+ [
+  {
+    "id": "hub-sample-03",
+    "title": "IMAGE TO PDF TOOL",
+    "description": "複数の画像をドラッグ＆ドロップで1つのPDFにまとめられるブラウザ完結型ツール。インストール不要で動作します。",
+    "category": "TOOLS",
+    "type": "HTML TOOL",
+    "tags": [
+      "TOOL",
+      "PDF",
+      "BROWSER"
+    ],
+    "thumbnail": "",
+    "url": "https://example.com/image-to-pdf",
+    "created": "2026-02-08",
+    "updated": "2026-04-22",
+    "published": true,
+    "featured": false,
+    "accentColor": "yellow",
+    "order": 3
+  },
+  {
+    "id": "hub-sample-05",
+    "title": "DASHBOARD UI CONCEPT",
+    "description": "データ可視化ダッシュボードのUIコンセプトデザイン。モジュラーグリッドとアクセントカラーによる情報設計の提案です。",
+    "category": "OTHER",
+    "type": "IMAGE",
+    "tags": [
+      "UI",
+      "DASHBOARD",
+      "CONCEPT"
+    ],
+    "thumbnail": "",
+    "url": "https://example.com/dashboard-ui-concept",
+    "created": "2026-04-11",
+    "updated": "2026-05-12",
+    "published": true,
+    "featured": false,
+    "accentColor": "orange",
+    "order": 5
+  }
+]
    ========================================================== */
 window.CREATE_HUB_DATA = null;
