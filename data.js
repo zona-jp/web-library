@@ -1,49 +1,21 @@
 /* ==========================================================
-   CREATE HUB ─ 静的公開用データファイル
-   GitHub Pages などで公開する場合は、この配列に成果物を記述してください。
-   null のままの場合、index.html 内蔵のサンプルデータが表示されます。
-   （管理者モードでの編集内容は閲覧者ごとの localStorage に保存されるため、
-     全員に公開するデータはこのファイルで管理します）
+   CREATE HUB ─ 静的公開用データファイル（フォールバック）
+   ----------------------------------------------------------
+   ★ 共有データベース（Supabase）を設定している場合、
+     通常このファイルは使われません。
+     データベースに接続できないときの「予備データ」として働きます。
 
-   記述例：
-   window.CREATE_HUB_DATA = [
-     {
-       id: 'work-001',
-       title: 'AI WORKFLOW GUIDE',
-       description: 'AIを業務に組み込むための実践ガイド。',
-       category: 'OTHER',         // SLIDES / WEB / TOOLS / OTHER
-       type: 'PDF',               // PDF / SLIDES / IMAGE / WEB SITE / WEB APP / HTML TOOL / VIDEO / AI PROJECT / OTHER
-       tags: ['AI', 'GUIDE'],
-       thumbnail: 'images/ai-guide.png',        // 相対パスまたは https://
-       url: 'documents/ai-workflow-guide.pdf',  // 相対パスまたは https://
-       created: '2026-05-02',
-       updated: '2026-06-18',
-       published: true,
-       featured: true,
-       accentColor: 'green',      // green / yellow / cyan / purple / orange
-       order: 1
-     }
-   ];
+   ★ 手書きしないでください。
+     管理画面の EXPORT で出力した JSON を、下の
+     window.CREATE_HUB_DATA = [ の次の行から ]; の前までに
+     「配列の中身だけ」貼り付けます。
+     （EXPORT結果の先頭の [ と末尾の ] は貼り付けない）
+
+   ★ 保存したら必ず構文チェックしてください：
+        node --check data.js
+     何も表示されなければ正常です。
    ========================================================== */
- window.CREATE_HUB_DATA = [
-     {
-[
-  {
-    "id": "hub-sample-03",
-    "title": "sanmpe",
-    "description": "",
-    "category": "TOOLS",
-    "type": "WEB SITE",
-    "tags": [],
-    "thumbnail": "images/RIALA-logo.png",
-    "url": "https://riala.jp/",
-    "created": "2026-02-08",
-    "updated": "2026-04-22",
-    "published": true,
-    "featured": false,
-    "accentColor": "yellow",
-    "order": 3
-  },
+window.CREATE_HUB_DATA = [
   {
     "id": "hub-sample-05",
     "title": "RIALAホームページ",
@@ -59,7 +31,21 @@
     "featured": false,
     "accentColor": "purple",
     "order": 0
+  },
+  {
+    "id": "hub-sample-03",
+    "title": "sanmpe",
+    "description": "",
+    "category": "TOOLS",
+    "type": "WEB SITE",
+    "tags": [],
+    "thumbnail": "images/RIALA-logo.png",
+    "url": "https://riala.jp/",
+    "created": "2026-02-08",
+    "updated": "2026-04-22",
+    "published": true,
+    "featured": false,
+    "accentColor": "yellow",
+    "order": 3
   }
-]
-     }
-   ];
+];

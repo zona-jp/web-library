@@ -288,6 +288,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <button id="newProjectBtn" class="btn btn--yellow btn--sm hidden" type="button"><svg class="icon"><use href="#i-plus"/></svg>NEW PROJECT</button>
       <button id="exportBtn" class="btn btn--sm hidden" type="button" style="background:#2B2B2B;color:#FFF;border:1.5px solid #555"><svg class="icon"><use href="#i-download"/></svg>EXPORT</button>
       <button id="importBtn" class="btn btn--sm hidden" type="button" style="background:#2B2B2B;color:#FFF;border:1.5px solid #555"><svg class="icon"><use href="#i-upload"/></svg>IMPORT</button>
+      <button id="publishBtn" class="btn btn--yellow btn--sm hidden" type="button"><svg class="icon"><use href="#i-upload"/></svg>公開データを更新</button>
       <button id="searchBtn" class="icon-btn" type="button" aria-label="検索へ移動"><svg class="icon"><use href="#i-search"/></svg></button>
       <button id="editBtn" class="btn btn--ghost btn--sm" type="button"><svg class="icon"><use href="#i-edit"/></svg><span id="editBtnLabel">EDIT</span></button>
     </div>
@@ -368,6 +369,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 
 <!-- GitHub Pages 公開用の静的データ（存在しなければ内蔵サンプルを使用） -->
 <script src="data.js"></script>
+<!-- 共有データベース用ライブラリ（未設定でも動作します） -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (() => {
 'use strict';
@@ -377,10 +380,23 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
    ========================================================== */
 const APP_CONFIG = {
   siteName: 'CREATE HUB',
-  storageKey: 'createHubProjects',      // localStorage キー
-  sessionKey: 'createHubEditMode',      // sessionStorage キー
-  // 静的サイトのため簡易認証。公開前に必ず変更してください（詳細は同梱の説明参照）
-  adminPassword: 'createhub2026',
+  storageKey: 'createHubDraft',         // localStorage キー（★下書き専用。公開データではない）
+  sessionKey: 'createHubEditMode',      // sessionStorage キー（共有DB未設定時の簡易認証用）
+
+  /* ==========================================================
+     ★★★ ここだけ設定してください ★★★
+     Supabase 管理画面の Project Settings → API から2つをコピーして貼り付けます。
+     空のままなら、従来どおり data.js / 内蔵サンプルで動作します（共有機能はオフ）。
+     ※ anonKey は「公開してよいキー」です。書き込み権限はサーバー側(RLS)で制御します。
+     ========================================================== */
+  remote: {
+    url: 'https://bubdmwxcgmoyzoyrquhk.supabase.co',
+    anonKey: 'sb_publishable_Uc2Vnq4QvsB0iwa3B_Af9w_LOUSQRDY'
+  },
+
+  // ※ 旧・共通パスワード方式は廃止しました。
+  //    ログインは Supabase の「メールアドレス＋パスワード」（個人ごと）です。
+  //    編集者の追加は Supabase → Authentication → Users → Add user から行います。
   categories: ['ALL', 'SLIDES', 'WEB', 'TOOLS', 'OTHER'],
   types: ['PDF', 'SLIDES', 'IMAGE', 'WEB SITE', 'WEB APP', 'HTML TOOL', 'VIDEO', 'AI PROJECT', 'OTHER'],
   accents: { green: '#16D766', yellow: '#FFE928', cyan: '#27C7F5', purple: '#C991FF', orange: '#FFB020' },
@@ -467,54 +483,147 @@ const STATE = {
 };
 
 /* ==========================================================
+   REMOTE_STORE ─ 共有データベース（Supabase）との入出力
+   ・公開データ  : site_public テーブル（誰でも読める／公開ONのみ）
+   ・編集用データ: site_data   テーブル（ログイン者のみ読み書き）
+   APP_CONFIG.remote が未設定なら enabled=false となり、
+   従来どおり data.js / 内蔵サンプルで動作します。
+   ========================================================== */
+const REMOTE_STORE = {
+  client: null,
+  enabled: false,
+
+  init() {
+    const { url, anonKey } = APP_CONFIG.remote || {};
+    if (!url || !anonKey || !window.supabase) return false;
+    try {
+      this.client = window.supabase.createClient(url, anonKey);
+      this.enabled = true;
+    } catch (err) {
+      console.warn('共有データベースへの接続に失敗しました', err);
+      this.enabled = false;
+    }
+    return this.enabled;
+  },
+
+  /* 閲覧者向け：公開ONの成果物だけを取得（ログイン不要） */
+  async fetchPublic() {
+    const { data, error } = await this.client
+      .from('site_public').select('payload').eq('id', 1).maybeSingle();
+    if (error) throw error;
+    return Array.isArray(data?.payload) ? data.payload : [];
+  },
+
+  /* 編集者向け：非公開を含む全件を取得（ログイン必須） */
+  async fetchAll() {
+    const { data, error } = await this.client
+      .from('site_data').select('payload').eq('id', 1).maybeSingle();
+    if (error) throw error;
+    return Array.isArray(data?.payload) ? data.payload : [];
+  },
+
+  /* 「公開データを更新」：現在の内容を共有データベースへ保存 */
+  async publish(projects) {
+    const user = await this.currentUser();
+    const { error } = await this.client.from('site_data').upsert({
+      id: 1,
+      payload: projects,
+      updated_at: new Date().toISOString(),
+      updated_by: user?.email || ''
+    });
+    if (error) throw error;
+    return true;
+  },
+
+  async signIn(email, password) {
+    const { error } = await this.client.auth.signInWithPassword({ email, password });
+    return !error;
+  },
+  async signOut() { await this.client.auth.signOut(); },
+  async currentUser() {
+    const { data } = await this.client.auth.getUser();
+    return data?.user || null;
+  }
+};
+
+/* ==========================================================
    AUTH_SERVICE ─ 管理者編集モード
+   共有DB有効時 : Supabase のメール＋パスワード認証（個人ごと）
+   共有DB未設定 : 従来の簡易パスワード
    ========================================================== */
 const AUTH_SERVICE = {
-  isActive() { return sessionStorage.getItem(APP_CONFIG.sessionKey) === '1'; },
-  login(password) {
-    if (password === APP_CONFIG.adminPassword) {
-      sessionStorage.setItem(APP_CONFIG.sessionKey, '1');
-      return true;
-    }
-    return false;
+  async isActive() {
+    if (REMOTE_STORE.enabled) return !!(await REMOTE_STORE.currentUser());
+    return sessionStorage.getItem(APP_CONFIG.sessionKey) === '1';
   },
-  logout() { sessionStorage.removeItem(APP_CONFIG.sessionKey); }
+  async login(password, email) {
+    // 共有DBに接続できない場合はログインを受け付けない（誤って編集されるのを防ぐ）
+    if (!REMOTE_STORE.enabled) return false;
+    return REMOTE_STORE.signIn(email, password);
+  },
+  async logout() {
+    if (REMOTE_STORE.enabled) await REMOTE_STORE.signOut();
+    sessionStorage.removeItem(APP_CONFIG.sessionKey);
+  }
 };
 
 /* ==========================================================
    DATA_SERVICE ─ データ取得と保存
-   取得優先順位：localStorage（管理編集分）→ data.js → 内蔵サンプル
-   将来 Supabase / Firebase / GitHub API へ差し替える場合は
-   このオブジェクトの load / persist だけを置き換えれば済む構成
+   ----------------------------------------------------------
+   ★ 公開データの取得優先順位（localStorage は使いません）
+        共有データベース → data.js → 内蔵サンプル
+   ★ localStorage は「まだ公開していない下書き」専用に格下げ。
+      「公開データを更新」を押すまで、他の人には反映されません。
    ========================================================== */
 const DATA_SERVICE = {
-  load() {
-    const local = this.loadLocal();
-    if (local) return local;
+  dirty: false,          // 未公開の変更があるか
+
+  /* 起動時の読み込み（閲覧者・編集者共通） */
+  async load(isEditor) {
+    if (REMOTE_STORE.enabled) {
+      try {
+        const rows = isEditor ? await REMOTE_STORE.fetchAll() : await REMOTE_STORE.fetchPublic();
+        if (rows.length) {
+          this.dirty = false;
+          return rows.map(normalize);
+        }
+        // 共有データがまだ空（導入直後）→ data.js を表示して空白サイトを防ぐ
+        console.info('共有データが空のため、data.js の内容を表示します');
+      } catch (err) {
+        console.warn('共有データの取得に失敗しました。予備データを表示します', err);
+        toast('共有データを取得できませんでした（予備データを表示中）');
+      }
+    }
     if (Array.isArray(window.CREATE_HUB_DATA)) return window.CREATE_HUB_DATA.map(normalize);
     return SAMPLE_PROJECTS.map(normalize);
   },
-  loadLocal() {
+
+  /* 下書きの保存（このブラウザの中だけ。公開には反映されない） */
+  persist() {
+    this.dirty = true;
+    try {
+      localStorage.setItem(APP_CONFIG.storageKey, JSON.stringify(STATE.projects));
+    } catch (err) {
+      console.warn('下書きの保存に失敗しました', err);
+    }
+    UI_RENDERER.renderHeader();
+    return true;
+  },
+
+  /* 下書きの復元（編集モードに入ったときのみ確認して使う） */
+  loadDraft() {
     try {
       const raw = localStorage.getItem(APP_CONFIG.storageKey);
       if (!raw) return null;
       const arr = JSON.parse(raw);
       return Array.isArray(arr) ? arr.map(normalize) : null;
-    } catch (err) {
-      console.warn('保存データの読み込みに失敗しました', err);
-      return null;
-    }
+    } catch { return null; }
   },
-  persist() {
-    try {
-      localStorage.setItem(APP_CONFIG.storageKey, JSON.stringify(STATE.projects));
-      return true;
-    } catch (err) {
-      console.warn('保存に失敗しました', err);
-      toast('ブラウザへの保存に失敗しました');
-      return false;
-    }
+  clearDraft() {
+    this.dirty = false;
+    try { localStorage.removeItem(APP_CONFIG.storageKey); } catch {}
   },
+
   upsert(project) {
     const idx = STATE.projects.findIndex(p => p.id === project.id);
     if (idx >= 0) STATE.projects[idx] = project;
@@ -577,6 +686,11 @@ const UI_RENDERER = {
     $('#exportBtn').classList.toggle('hidden', !STATE.editMode);
     $('#importBtn').classList.toggle('hidden', !STATE.editMode);
     $('#editBtnLabel').textContent = STATE.editMode ? 'EXIT EDIT MODE' : 'EDIT';
+
+    // 「公開データを更新」ボタン：編集モード かつ 共有DB有効時のみ表示
+    const pub = $('#publishBtn');
+    pub.classList.toggle('hidden', !(STATE.editMode && REMOTE_STORE.enabled));
+    pub.textContent = DATA_SERVICE.dirty ? '● 公開データを更新（未反映あり）' : '公開データを更新';
   },
 
   renderHero() {
@@ -936,6 +1050,11 @@ function openAuthModal() {
       </header>
       <div class="modal-body">
         <form id="authForm" novalidate>
+          ${REMOTE_STORE.enabled ? `
+          <div class="field">
+            <label for="authEmail">MAIL ADDRESS</label>
+            <input id="authEmail" type="email" autocomplete="username" required aria-describedby="authError">
+          </div>` : ''}
           <div class="field">
             <label for="authPassword">PASSWORD</label>
             <input id="authPassword" type="password" autocomplete="current-password" required aria-describedby="authError">
@@ -948,26 +1067,87 @@ function openAuthModal() {
       </div>
     </section>`, '管理者認証');
 
-  $('#authForm').addEventListener('submit', e => {
+  $('#authForm').addEventListener('submit', async e => {
     e.preventDefault();
     const input = $('#authPassword');
-    if (AUTH_SERVICE.login(input.value)) {
-      STATE.editMode = true;
+    const email = REMOTE_STORE.enabled ? $('#authEmail').value.trim() : '';
+    const ok = await AUTH_SERVICE.login(input.value, email);
+    if (ok) {
       MODAL_CONTROLLER.close();
-      UI_RENDERER.renderAll();
-      toast('EDIT MODE ACTIVE — 管理者モードに切り替えました');
+      await enterEditMode();
     } else {
-      $('#authError').textContent = 'パスワードが正しくありません。';
+      $('#authError').textContent = REMOTE_STORE.enabled
+        ? 'メールアドレスまたはパスワードが正しくありません。'
+        : 'パスワードが正しくありません。';
       input.select();
     }
   });
 }
 
-function exitEditMode() {
-  AUTH_SERVICE.logout();
+/* 編集モードに入る：非公開を含む最新の共有データを取り直す */
+async function enterEditMode() {
+  STATE.editMode = true;
+  STATE.projects = await DATA_SERVICE.load(true);
+
+  // 未公開の下書きが残っていれば、使うかどうか確認する
+  const draft = DATA_SERVICE.loadDraft();
+  if (draft && JSON.stringify(draft) !== JSON.stringify(STATE.projects)) {
+    if (confirm('前回このブラウザで編集した「未公開の下書き」が残っています。\n\n［OK］下書きを復元する\n［キャンセル］共有データを使う（下書きは破棄）')) {
+      STATE.projects = draft;
+      DATA_SERVICE.dirty = true;
+    } else {
+      DATA_SERVICE.clearDraft();
+    }
+  } else {
+    DATA_SERVICE.clearDraft();
+  }
+
+  UI_RENDERER.renderAll();
+  toast('EDIT MODE ACTIVE — 管理者モードに切り替えました');
+}
+
+async function exitEditMode() {
+  if (DATA_SERVICE.dirty && REMOTE_STORE.enabled) {
+    if (!confirm('まだ公開データに反映していない変更があります。\n編集モードを終了しますか？\n（変更は下書きとしてこのブラウザに残ります）')) return;
+  }
+  await AUTH_SERVICE.logout();
   STATE.editMode = false;
+  STATE.projects = await DATA_SERVICE.load(false);
   UI_RENDERER.renderAll();
   toast('閲覧モードに戻りました');
+}
+
+/* ==========================================================
+   公開データを更新 ─ 共有データベースへ反映
+   ここを押して初めて、他の利用者の画面に反映されます
+   ========================================================== */
+async function publishData() {
+  if (!REMOTE_STORE.enabled) {
+    toast('共有データベースが未設定です');
+    return;
+  }
+  const total = STATE.projects.length;
+  const open = STATE.projects.filter(p => p.published).length;
+  const msg = `公開データを更新します。\n\n・登録件数：${total} 件\n・うち公開ON：${open} 件（サイトに表示されます）\n・非公開：${total - open} 件（表示されません）\n\nこの内容で、同じURLを見るすべての人に反映されます。よろしいですか？`;
+  if (!confirm(msg)) return;
+
+  const btn = $('#publishBtn');
+  btn.disabled = true;
+  btn.textContent = '更新中…';
+  try {
+    await REMOTE_STORE.publish(STATE.projects);
+    DATA_SERVICE.clearDraft();
+    toast(`公開データを更新しました（公開 ${open} 件）`);
+  } catch (err) {
+    console.error(err);
+    const m = String(err?.message || '');
+    toast(/row-level security|permission|denied/i.test(m)
+      ? '更新権限がありません。管理者にお問い合わせください'
+      : '更新に失敗しました：' + m);
+  } finally {
+    btn.disabled = false;
+    UI_RENDERER.renderHeader();
+  }
 }
 
 /* ==========================================================
@@ -1015,7 +1195,9 @@ function importDataJSON() {
           <button type="button" class="btn btn--yellow" id="importConfirmBtn">✓ 置き換える</button>
         </div>
         <p class="note" style="margin-top:14px;font-size:9pt">
-          <strong>警告：</strong>現在のデータが置き換わります。バックアップをお勧めします。
+          <strong>警告：</strong>現在のデータが置き換わります。バックアップをお勧めします。<br>
+          この時点ではまだ<strong>あなたの画面だけ</strong>が変わります。内容を確認したあと、
+          ヘッダーの<strong>「公開データを更新」</strong>を押すと全員に反映されます。
         </p>
       </div>
     </section>`, 'JSONをインポート');
@@ -1033,7 +1215,9 @@ function importDataJSON() {
       DATA_SERVICE.persist();
       MODAL_CONTROLLER.close();
       UI_RENDERER.renderAll();
-      toast('データを置き換えました');
+      toast(REMOTE_STORE.enabled
+        ? `${data.length}件を読み込みました。内容を確認して「公開データを更新」を押してください`
+        : 'データを置き換えました');
     } catch (err) {
       errEl.textContent = 'JSON解析エラー: ' + (err.message || '形式が正しくありません');
     }
@@ -1055,6 +1239,12 @@ const EVENT_CONTROLLER = {
     $('#newProjectBtn').addEventListener('click', () => PROJECT_EDITOR.open());
     $('#exportBtn').addEventListener('click', exportDataJSON);
     $('#importBtn').addEventListener('click', importDataJSON);
+    $('#publishBtn').addEventListener('click', publishData);
+
+    // 未公開の変更があるまま離脱しようとしたら警告
+    window.addEventListener('beforeunload', e => {
+      if (DATA_SERVICE.dirty && REMOTE_STORE.enabled) { e.preventDefault(); e.returnValue = ''; }
+    });
 
     // カテゴリ・タグチップ（委譲）
     const onChip = e => {
@@ -1128,10 +1318,13 @@ const EVENT_CONTROLLER = {
 /* ==========================================================
    起動
    ========================================================== */
-STATE.editMode = AUTH_SERVICE.isActive();
-STATE.projects = DATA_SERVICE.load();
-EVENT_CONTROLLER.init();
-UI_RENDERER.renderAll();
+(async () => {
+  REMOTE_STORE.init();                              // 共有DBに接続（未設定なら何もしない）
+  STATE.editMode = await AUTH_SERVICE.isActive();   // ログイン状態を復元
+  STATE.projects = await DATA_SERVICE.load(STATE.editMode);
+  EVENT_CONTROLLER.init();
+  UI_RENDERER.renderAll();
+})();
 })();
 </script>
 </body>
