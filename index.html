@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" class="intro">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -85,6 +85,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .module--featured{grid-column:span 4;grid-row:span 2;color:var(--black);display:flex;flex-direction:column;gap:12px;cursor:pointer;transition:transform var(--speed)}
 .module--featured:hover{transform:translateY(-4px)}
 .module--featured .f-label{font-size:11px;font-weight:900;letter-spacing:.2em;background:var(--black);color:var(--white);align-self:flex-start;padding:5px 12px;border-radius:6px}
+.module--featured .f-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.module--featured .f-admin{display:flex;align-items:center;gap:6px}
+.module--featured .f-admin .status-badge{position:static}
+.module--featured .f-admin .mini-btn{width:34px;height:34px}
 .module--featured .f-thumb{flex:0 0 auto;position:relative;width:100%;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:rgba(0,0,0,.12)}
 .module--featured .f-thumb img{display:block;width:100%;height:100%;object-fit:cover;transition:transform var(--speed)}
 .module--featured:hover .f-thumb img{transform:scale(1.04)}
@@ -218,6 +222,37 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .toast{position:fixed;z-index:100;left:50%;bottom:26px;transform:translate(-50%,16px);opacity:0;padding:12px 22px;border-radius:999px;background:var(--yellow);color:var(--black);font-size:13px;font-weight:800;pointer-events:none;transition:opacity var(--speed),transform var(--speed)}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
+/* ----------------------------------------------------------
+   初回表示アニメーション
+   ・<html class="intro"> が付いている間だけ動く。約1.2秒で完了し、
+     JS が intro を外すので以降の再描画（検索・絞り込み等）では動かない。
+   ・すべて自動再生＋fill:both で「最後は必ず通常状態」で終わるため、
+     JS が動かなくてもコンテンツが隠れたままになることはない。
+   ・配色・余白・レイアウトは変更せず、透明度とごく小さな移動のみ。
+   ---------------------------------------------------------- */
+#introVeil{display:none}
+.intro #introVeil{display:block;position:fixed;inset:0;z-index:50;background:var(--black);pointer-events:none;animation:intro-veil .45s ease-out .05s both}
+@keyframes intro-veil{from{opacity:1}to{opacity:0;visibility:hidden}}
+@keyframes intro-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes intro-drop{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.intro .site-header{animation:intro-drop .45s cubic-bezier(.22,.61,.36,1) .08s both}
+.intro .module--title{animation:intro-rise .5s cubic-bezier(.22,.61,.36,1) .16s both}
+.intro .module--featured{animation:intro-rise .5s cubic-bezier(.22,.61,.36,1) .24s both}
+.intro .module--stat{animation:intro-rise .45s cubic-bezier(.22,.61,.36,1) .32s both}
+.intro .module--stat+.module--stat{animation-delay:.37s}
+.intro .module--stat+.module--stat+.module--stat{animation-delay:.42s}
+.intro .module--latest{animation:intro-rise .45s cubic-bezier(.22,.61,.36,1) .47s both}
+.intro .section-head,.intro .toolbar,.intro .chips{animation:intro-rise .45s cubic-bezier(.22,.61,.36,1) .4s both}
+/* カードは --i（描画順）でごく短い時差をつける。12枚目以降は同時 */
+.intro #cards .card{animation:intro-rise .42s cubic-bezier(.22,.61,.36,1) both;animation-delay:calc(.34s + var(--i,0) * .035s)}
+
+/* 動きを減らす設定の環境では演出そのものを行わない */
+@media(prefers-reduced-motion:reduce){
+  .intro #introVeil{display:none}
+  .intro .site-header,.intro .module--title,.intro .module--featured,.intro .module--stat,
+  .intro .module--latest,.intro .section-head,.intro .toolbar,.intro .chips,.intro #cards .card{animation:none}
+}
+
 /* ---------- レスポンシブ ---------- */
 @media(max-width:1100px){
   .module--title{grid-column:span 12;grid-row:span 1}
@@ -254,6 +289,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 </style>
 </head>
 <body>
+<!-- 初回表示時だけ現れる背景色のレイヤー（クリックは常に透過する） -->
+<div id="introVeil" aria-hidden="true"></div>
 <a class="skip-link" href="#library">コンテンツへスキップ</a>
 
 <!-- 共有アイコン -->
@@ -646,8 +683,19 @@ const FILTER_CONTROLLER = {
   base() {
     return STATE.editMode ? STATE.projects.slice() : STATE.projects.filter(p => p.published);
   },
+  /* 注目エリアに固定表示する成果物。FEATURED 指定が無ければ null。
+     ここで返した1件だけを ALL WORKS 一覧から外すので、データは複製されず
+     「上部に出ているものは下部に出ない」振り分けになる。 */
+  heroFeatured() {
+    return this.base().filter(p => p.featured).sort((a, b) => a.order - b.order)[0] || null;
+  },
+  /* ALL WORKS 一覧のもとになる集合（注目エリアに振り分け済みの1件を除いたもの） */
+  pool() {
+    const pinned = this.heroFeatured();
+    return pinned ? this.base().filter(p => p.id !== pinned.id) : this.base();
+  },
   visible() {
-    let list = this.base();
+    let list = this.pool();
     if (STATE.category !== 'ALL') list = list.filter(p => p.category === STATE.category);
     if (STATE.tag) list = list.filter(p => p.tags.includes(STATE.tag));
     const q = STATE.query.trim().toLowerCase();
@@ -664,7 +712,8 @@ const FILTER_CONTROLLER = {
     }
   },
   tagsFor() {
-    let list = this.base();
+    // 一覧と同じ集合から作る（注目エリアの1件だけが持つタグを出して0件になるのを防ぐ）
+    let list = this.pool();
     if (STATE.category !== 'ALL') list = list.filter(p => p.category === STATE.category);
     const set = new Set();
     list.forEach(p => p.tags.forEach(t => set.add(t)));
@@ -703,7 +752,10 @@ const UI_RENDERER = {
     const newest = list.slice().sort((a, b) => b.updated.localeCompare(a.updated))[0];
     $('#statUpdated').textContent = newest ? fmt(newest.updated) : '—';
 
-    const featured = list.filter(p => p.featured).sort((a, b) => a.order - b.order)[0] || newest;
+    // FEATURED 指定があればそれを固定表示。無い場合だけ最新を「見せるだけ」の代役にする
+    // （代役は指定されていないので ALL WORKS 一覧からは外さない＝pool() 側と一致）
+    const pinned = FILTER_CONTROLLER.heroFeatured();
+    const featured = pinned || newest;
     const fm = $('#featuredModule');
     if (featured) {
       fm.style.background = APP_CONFIG.accents[featured.accentColor];
@@ -711,8 +763,16 @@ const UI_RENDERER = {
       const fThumb = featured.thumbnail
         ? `<div class="f-thumb"><img src="${esc(featured.thumbnail)}" alt="${esc(featured.title)}のサムネイル"></div>`
         : '';
+      // 一覧から外れる分、編集モードでは編集・削除をこの場から行えるようにする
+      const fAdmin = STATE.editMode
+        ? `<div class="f-admin">
+             <span class="status-badge ${featured.published ? 'status-badge--pub' : 'status-badge--draft'}">${featured.published ? 'PUBLISHED' : 'DRAFT'}</span>
+             <button type="button" class="mini-btn" data-edit="${featured.id}" aria-label="${esc(featured.title)}を編集"><svg class="icon"><use href="#i-edit"/></svg></button>
+             <button type="button" class="mini-btn mini-btn--danger" data-delete="${featured.id}" aria-label="${esc(featured.title)}を削除"><svg class="icon"><use href="#i-trash"/></svg></button>
+           </div>`
+        : '';
       fm.innerHTML = `
-        <span class="f-label">FEATURED</span>
+        <div class="f-top"><span class="f-label">FEATURED</span>${fAdmin}</div>
         ${fThumb}
         <h2>${esc(featured.title)}</h2>
         <p>${esc(featured.description)}</p>
@@ -751,7 +811,7 @@ const UI_RENDERER = {
       `<button type="button" class="chip${t === STATE.tag ? ' active' : ''}" data-tag="${esc(t)}" aria-pressed="${t === STATE.tag}">#${esc(t)}</button>`).join('');
   },
 
-  cardHTML(p) {
+  cardHTML(p, index = 0) {
     const accent = APP_CONFIG.accents[p.accentColor];
     const cta = APP_CONFIG.cta[p.type] || 'VIEW PROJECT';
     const wide = p.featured ? ' card--wide' : '';
@@ -772,7 +832,7 @@ const UI_RENDERER = {
       ? `<button type="button" class="open-btn" data-open="${p.id}"><span>${cta}</span><span aria-hidden="true">→</span></button>`
       : `<button type="button" class="open-btn" disabled><span>NO LINK</span></button>`;
     return `
-      <article class="card${wide}${accentBg}" style="--ac:${accent}" data-id="${p.id}" tabindex="0" aria-label="${esc(p.title)}の詳細を開く">
+      <article class="card${wide}${accentBg}" style="--ac:${accent};--i:${Math.min(index, 11)}" data-id="${p.id}" tabindex="0" aria-label="${esc(p.title)}の詳細を開く">
         <div class="card-thumb">
           <span class="type-tag">${esc(p.type)}</span>
           ${status}
@@ -801,9 +861,13 @@ const UI_RENDERER = {
       grid.innerHTML = '';
       empty.classList.remove('hidden');
       const filtering = STATE.query || STATE.category !== 'ALL' || STATE.tag;
+      // 唯一の成果物が注目エリアへ振り分けられている場合、「未登録」と誤解させない
+      const onlyPinned = !filtering && FILTER_CONTROLLER.base().length > 0;
       empty.innerHTML = filtering
         ? `<div><h3>条件に一致する成果物がありません</h3><p>キーワードや絞り込みを変更してお試しください。</p><button type="button" id="resetFilters" class="btn">RESET FILTERS</button></div>`
-        : `<div><h3>まだ成果物が登録されていません</h3><p>${STATE.editMode ? '「NEW PROJECT」から最初の成果物を登録できます。' : '成果物が公開されるとここに表示されます。'}</p>${STATE.editMode ? '<button type="button" id="emptyNew" class="btn btn--yellow">NEW PROJECT</button>' : ''}</div>`;
+        : onlyPinned
+          ? `<div><h3>すべて注目コンテンツに表示中です</h3><p>登録されている成果物は上部の FEATURED に表示されています。${STATE.editMode ? '注目指定を解除すると、この一覧に戻ります。' : ''}</p>${STATE.editMode ? '<button type="button" id="emptyNew" class="btn btn--yellow">NEW PROJECT</button>' : ''}</div>`
+          : `<div><h3>まだ成果物が登録されていません</h3><p>${STATE.editMode ? '「NEW PROJECT」から最初の成果物を登録できます。' : '成果物が公開されるとここに表示されます。'}</p>${STATE.editMode ? '<button type="button" id="emptyNew" class="btn btn--yellow">NEW PROJECT</button>' : ''}</div>`;
       const rb = $('#resetFilters');
       if (rb) rb.onclick = () => { STATE.query = ''; STATE.category = 'ALL'; STATE.tag = null; $('#searchInput').value = ''; UI_RENDERER.renderAll(); };
       const en = $('#emptyNew');
@@ -811,7 +875,7 @@ const UI_RENDERER = {
       return;
     }
     empty.classList.add('hidden');
-    grid.innerHTML = list.map(p => this.cardHTML(p)).join('');
+    grid.innerHTML = list.map((p, i) => this.cardHTML(p, i)).join('');
   }
 };
 
@@ -1303,7 +1367,14 @@ const EVENT_CONTROLLER = {
     // ヒーローモジュール
     const heroModule = id => {
       const el = $(id);
-      el.addEventListener('click', () => { if (el.dataset.id) openDetail(el.dataset.id); });
+      el.addEventListener('click', e => {
+        // 注目エリア上の編集・削除ボタンは詳細モーダルより優先する
+        const edit = e.target.closest('[data-edit]');
+        if (edit) { PROJECT_EDITOR.open(edit.dataset.edit); return; }
+        const del = e.target.closest('[data-delete]');
+        if (del) { PROJECT_EDITOR.confirmDelete(del.dataset.delete); return; }
+        if (el.dataset.id) openDetail(el.dataset.id);
+      });
       el.addEventListener('keydown', e => {
         if ((e.key === 'Enter' || e.key === ' ') && el.dataset.id) { e.preventDefault(); openDetail(el.dataset.id); }
       });
@@ -1328,12 +1399,23 @@ const EVENT_CONTROLLER = {
 /* ==========================================================
    起動
    ========================================================== */
+/* 初回表示アニメーションを終了し、通常状態に戻す（何度呼んでも安全） */
+function endIntro() {
+  document.documentElement.classList.remove('intro');
+}
+
 (async () => {
+  // 演出が終わったら必ず通常状態へ。操作が始まったらその時点で打ち切る
+  setTimeout(endIntro, 3000);
+  addEventListener('pointerdown', endIntro, { once: true });
+  addEventListener('keydown', endIntro, { once: true });
+
   REMOTE_STORE.init();                              // 共有DBに接続（未設定なら何もしない）
   STATE.editMode = await AUTH_SERVICE.isActive();   // ログイン状態を復元
   STATE.projects = await DATA_SERVICE.load(STATE.editMode);
   EVENT_CONTROLLER.init();
   UI_RENDERER.renderAll();
+  setTimeout(endIntro, 1500);                       // 最後のカードが着地してから解除
 })();
 })();
 </script>
