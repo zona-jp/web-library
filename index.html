@@ -85,6 +85,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .module--featured{grid-column:span 4;grid-row:span 2;color:var(--black);display:flex;flex-direction:column;gap:12px;cursor:pointer;transition:transform var(--speed)}
 .module--featured:hover{transform:translateY(-4px)}
 .module--featured .f-label{font-size:11px;font-weight:900;letter-spacing:.2em;background:var(--black);color:var(--white);align-self:flex-start;padding:5px 12px;border-radius:6px}
+.module--featured .f-thumb{flex:0 0 auto;position:relative;width:100%;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:rgba(0,0,0,.12)}
+.module--featured .f-thumb img{display:block;width:100%;height:100%;object-fit:cover;transition:transform var(--speed)}
+.module--featured:hover .f-thumb img{transform:scale(1.04)}
 .module--featured h2{margin:auto 0 0;font-size:clamp(24px,2.4vw,36px);font-weight:900;letter-spacing:-.03em;line-height:1.05;text-transform:uppercase;word-break:break-word}
 .module--featured p{margin:0;font-size:13px;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .module--featured .f-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;font-weight:800;letter-spacing:.1em}
@@ -705,11 +708,18 @@ const UI_RENDERER = {
     if (featured) {
       fm.style.background = APP_CONFIG.accents[featured.accentColor];
       fm.dataset.id = featured.id;
+      const fThumb = featured.thumbnail
+        ? `<div class="f-thumb"><img src="${esc(featured.thumbnail)}" alt="${esc(featured.title)}のサムネイル"></div>`
+        : '';
       fm.innerHTML = `
         <span class="f-label">FEATURED</span>
+        ${fThumb}
         <h2>${esc(featured.title)}</h2>
         <p>${esc(featured.description)}</p>
         <div class="f-meta"><span>${esc(featured.category)} / ${esc(featured.type)}</span><span>UPDATED ${esc(fmt(featured.updated))}</span></div>`;
+      // 画像パスが解決できない場合はサムネイル枠を隠し、アクセントカラーのみの表示に戻す
+      const fImg = fm.querySelector('.f-thumb img');
+      if (fImg) fImg.addEventListener('error', () => { const box = fImg.closest('.f-thumb'); if (box) box.remove(); });
     } else {
       fm.style.background = 'var(--dark)';
       fm.removeAttribute('data-id');
