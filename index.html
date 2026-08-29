@@ -85,6 +85,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .module--featured{grid-column:span 4;grid-row:span 2;color:var(--black);display:flex;flex-direction:column;gap:12px;cursor:pointer;transition:transform var(--speed)}
 .module--featured:hover{transform:translateY(-4px)}
 .module--featured .f-label{font-size:11px;font-weight:900;letter-spacing:.2em;background:var(--black);color:var(--white);align-self:flex-start;padding:5px 12px;border-radius:6px}
+.module--featured .f-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.module--featured .f-admin{display:flex;align-items:center;gap:6px}
+.module--featured .f-admin .status-badge{position:static}
+.module--featured .f-admin .mini-btn{width:34px;height:34px}
 .module--featured .f-thumb{flex:0 0 auto;position:relative;width:100%;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:rgba(0,0,0,.12)}
 .module--featured .f-thumb img{display:block;width:100%;height:100%;object-fit:cover;transition:transform var(--speed)}
 .module--featured:hover .f-thumb img{transform:scale(1.04)}
@@ -646,8 +650,19 @@ const FILTER_CONTROLLER = {
   base() {
     return STATE.editMode ? STATE.projects.slice() : STATE.projects.filter(p => p.published);
   },
+  /* 注目エリアに固定表示する成果物。FEATURED 指定が無ければ null。
+     ここで返した1件だけを ALL WORKS 一覧から外すので、データは複製されず
+     「上部に出ているものは下部に出ない」振り分けになる。 */
+  heroFeatured() {
+    return this.base().filter(p => p.featured).sort((a, b) => a.order - b.order)[0] || null;
+  },
+  /* ALL WORKS 一覧のもとになる集合（注目エリアに振り分け済みの1件を除いたもの） */
+  pool() {
+    const pinned = this.heroFeatured();
+    return pinned ? this.base().filter(p => p.id !== pinned.id) : this.base();
+  },
   visible() {
-    let list = this.base();
+    let list = this.pool();
     if (STATE.category !== 'ALL') list = list.filter(p => p.category === STATE.category);
     if (STATE.tag) list = list.filter(p => p.tags.includes(STATE.tag));
     const q = STATE.query.trim().toLowerCase();
@@ -664,7 +679,8 @@ const FILTER_CONTROLLER = {
     }
   },
   tagsFor() {
-    let list = this.base();
+    // 一覧と同じ集合から作る（注目エリアの1件だけが持つタグを出して0件になるのを防ぐ）
+    let list = this.pool();
     if (STATE.category !== 'ALL') list = list.filter(p => p.category === STATE.category);
     const set = new Set();
     list.forEach(p => p.tags.forEach(t => set.add(t)));
@@ -703,7 +719,10 @@ const UI_RENDERER = {
     const newest = list.slice().sort((a, b) => b.updated.localeCompare(a.updated))[0];
     $('#statUpdated').textContent = newest ? fmt(newest.updated) : '—';
 
-    const featured = list.filter(p => p.featured).sort((a, b) => a.order - b.order)[0] || newest;
+    // FEATURED 指定があればそれを固定表示。無い場合だけ最新を「見せるだけ」の代役にする
+    // （代役は指定されていないので ALL WORKS 一覧からは外さない＝pool() 側と一致）
+    const pinned = FILTER_CONTROLLER.heroFeatured();
+    const featured = pinned || newest;
     const fm = $('#featuredModule');
     if (featured) {
       fm.style.background = APP_CONFIG.accents[featured.accentColor];
@@ -711,8 +730,16 @@ const UI_RENDERER = {
       const fThumb = featured.thumbnail
         ? `<div class="f-thumb"><img src="${esc(featured.thumbnail)}" alt="${esc(featured.title)}のサムネイル"></div>`
         : '';
+      // 一覧から外れる分、編集モードでは編集・削除をこの場から行えるようにする
+      const fAdmin = STATE.editMode
+        ? `<div class="f-admin">
+             <span class="status-badge ${featured.published ? 'status-badge--pub' : 'status-badge--draft'}">${featured.published ? 'PUBLISHED' : 'DRAFT'}</span>
+             <button type="button" class="mini-btn" data-edit="${featured.id}" aria-label="${esc(featured.title)}を編集"><svg class="icon"><use href="#i-edit"/></svg></button>
+             <button type="button" class="mini-btn mini-btn--danger" data-delete="${featured.id}" aria-label="${esc(featured.title)}を削除"><svg class="icon"><use href="#i-trash"/></svg></button>
+           </div>`
+        : '';
       fm.innerHTML = `
-        <span class="f-label">FEATURED</span>
+        <div class="f-top"><span class="f-label">FEATURED</span>${fAdmin}</div>
         ${fThumb}
         <h2>${esc(featured.title)}</h2>
         <p>${esc(featured.description)}</p>
@@ -801,9 +828,13 @@ const UI_RENDERER = {
       grid.innerHTML = '';
       empty.classList.remove('hidden');
       const filtering = STATE.query || STATE.category !== 'ALL' || STATE.tag;
+      // 唯一の成果物が注目エリアへ振り分けられている場合、「未登録」と誤解させない
+      const onlyPinned = !filtering && FILTER_CONTROLLER.base().length > 0;
       empty.innerHTML = filtering
         ? `<div><h3>条件に一致する成果物がありません</h3><p>キーワードや絞り込みを変更してお試しください。</p><button type="button" id="resetFilters" class="btn">RESET FILTERS</button></div>`
-        : `<div><h3>まだ成果物が登録されていません</h3><p>${STATE.editMode ? '「NEW PROJECT」から最初の成果物を登録できます。' : '成果物が公開されるとここに表示されます。'}</p>${STATE.editMode ? '<button type="button" id="emptyNew" class="btn btn--yellow">NEW PROJECT</button>' : ''}</div>`;
+        : onlyPinned
+          ? `<div><h3>すべて注目コンテンツに表示中です</h3><p>登録されている成果物は上部の FEATURED に表示されています。${STATE.editMode ? '注目指定を解除すると、この一覧に戻ります。' : ''}</p>${STATE.editMode ? '<button type="button" id="emptyNew" class="btn btn--yellow">NEW PROJECT</button>' : ''}</div>`
+          : `<div><h3>まだ成果物が登録されていません</h3><p>${STATE.editMode ? '「NEW PROJECT」から最初の成果物を登録できます。' : '成果物が公開されるとここに表示されます。'}</p>${STATE.editMode ? '<button type="button" id="emptyNew" class="btn btn--yellow">NEW PROJECT</button>' : ''}</div>`;
       const rb = $('#resetFilters');
       if (rb) rb.onclick = () => { STATE.query = ''; STATE.category = 'ALL'; STATE.tag = null; $('#searchInput').value = ''; UI_RENDERER.renderAll(); };
       const en = $('#emptyNew');
@@ -1303,7 +1334,14 @@ const EVENT_CONTROLLER = {
     // ヒーローモジュール
     const heroModule = id => {
       const el = $(id);
-      el.addEventListener('click', () => { if (el.dataset.id) openDetail(el.dataset.id); });
+      el.addEventListener('click', e => {
+        // 注目エリア上の編集・削除ボタンは詳細モーダルより優先する
+        const edit = e.target.closest('[data-edit]');
+        if (edit) { PROJECT_EDITOR.open(edit.dataset.edit); return; }
+        const del = e.target.closest('[data-delete]');
+        if (del) { PROJECT_EDITOR.confirmDelete(del.dataset.delete); return; }
+        if (el.dataset.id) openDetail(el.dataset.id);
+      });
       el.addEventListener('keydown', e => {
         if ((e.key === 'Enter' || e.key === ' ') && el.dataset.id) { e.preventDefault(); openDetail(el.dataset.id); }
       });
